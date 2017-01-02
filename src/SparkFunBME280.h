@@ -152,6 +152,9 @@ class BME280
 	//This also gets the SensorCalibration constants
     uint8_t begin( void );
 
+	// only set the configuration data
+    void reconfigure( void );
+	
 	//Software reset routine
 	void reset( void );
 	
@@ -178,7 +181,6 @@ class BME280
 	int16_t readRegisterInt16( uint8_t offset );
 	//Writes a byte;
     void writeRegister(uint8_t, uint8_t);
-    
 };
 
 

@@ -41,14 +41,13 @@ BME280::BME280( void )
 	//Select interface mode
 	settings.commInterface = I2C_MODE; //Can be I2C_MODE, SPI_MODE
 	//Select address for I2C.  Does nothing for SPI
-	settings.I2CAddress = 0x77; //Ignored for SPI_MODE
+	settings.I2CAddress = 0x76; //Ignored for SPI_MODE
 	//Select CS pin for SPI.  Does nothing for I2C
 	settings.chipSelectPin = 10;
 	settings.runMode = 0;
 	settings.tempOverSample = 0;
 	settings.pressOverSample = 0;
 	settings.humidOverSample = 0;
-
 }
 
 
@@ -64,13 +63,11 @@ BME280::BME280( void )
 uint8_t BME280::begin()
 {
 	//Check the settings structure values to determine how to setup the device
-	uint8_t dataToWrite = 0;  //Temporary variable
-
 	switch (settings.commInterface)
 	{
 
 	case I2C_MODE:
-		Wire.begin();
+		// Wire.begin();
 		break;
 
 	case SPI_MODE:
@@ -117,6 +114,15 @@ uint8_t BME280::begin()
 	calibration.dig_H5 = ((int16_t)((readRegister(BME280_DIG_H5_MSB_REG) << 4) + ((readRegister(BME280_DIG_H4_LSB_REG) >> 4) & 0x0F)));
 	calibration.dig_H6 = ((uint8_t)readRegister(BME280_DIG_H6_REG));
 
+	reconfigure();
+	
+	return readRegister(0xD0);
+}
+
+// Configuration only
+void BME280::reconfigure( void ) {
+	uint8_t dataToWrite = 0;  //Temporary variable
+
 	//Set the oversampling control words.
 	//config will only be writeable in sleep mode, so first insure that.
 	writeRegister(BME280_CTRL_MEAS_REG, 0x00);
@@ -139,9 +145,8 @@ uint8_t BME280::begin()
 	dataToWrite |= (settings.runMode) & 0x03;
 	//Load the byte
 	writeRegister(BME280_CTRL_MEAS_REG, dataToWrite);
-	
-	return readRegister(0xD0);
 }
+
 
 //Strictly resets.  Run .begin() afterwards
 void BME280::reset( void )
@@ -240,10 +245,22 @@ float BME280::readTempC( void )
 	// t_fine carries fine temperature as global value
 
 	//get the reading (adc_T);
-	int32_t adc_T = ((uint32_t)readRegister(BME280_TEMPERATURE_MSB_REG) << 12) | ((uint32_t)readRegister(BME280_TEMPERATURE_LSB_REG) << 4) | ((readRegister(BME280_TEMPERATURE_XLSB_REG) >> 4) & 0x0F);
-
+	// int32_t adc_T = ((uint32_t)readRegister(BME280_TEMPERATURE_MSB_REG) << 12) | ((uint32_t)readRegister(BME280_TEMPERATURE_LSB_REG) << 4) | ((readRegister(BME280_TEMPERATURE_XLSB_REG) >> 4) & 0x0F);
+	
+    Wire.beginTransmission(settings.I2CAddress);
+    Wire.write((uint8_t)0xFA);
+    Wire.endTransmission();
+    Wire.requestFrom(settings.I2CAddress, (byte)3);
+    
+    int32_t adc_T  = Wire.read();
+    adc_T <<= 8;
+    adc_T |= Wire.read();
+    adc_T <<= 8;
+    adc_T |= Wire.read();
+    adc_T >>= 4;
+	
 	//By datasheet, calibrate
-	int64_t var1, var2;
+	int32_t var1, var2;
 
 	var1 = ((((adc_T>>3) - ((int32_t)calibration.dig_T1<<1))) * ((int32_t)calibration.dig_T2)) >> 11;
 	var2 = (((((adc_T>>4) - ((int32_t)calibration.dig_T1)) * ((adc_T>>4) - ((int32_t)calibration.dig_T1))) >> 12) *
@@ -285,6 +302,7 @@ void BME280::readRegisterRegion(uint8_t *outputPointer , uint8_t offset, uint8_t
 
 		// request bytes from slave device
 		Wire.requestFrom(settings.I2CAddress, length);
+		/*
 		while ( (Wire.available()) && (i < length))  // slave may send less than requested
 		{
 			c = Wire.read(); // receive a byte as character
@@ -292,6 +310,16 @@ void BME280::readRegisterRegion(uint8_t *outputPointer , uint8_t offset, uint8_t
 			outputPointer++;
 			i++;
 		}
+		*/
+		
+		while (Wire.available() != length) ; // wait until bytes are ready
+		for(int x=0;x<length;x++) {
+			c = Wire.read(); // receive a byte as character
+			*outputPointer = c;
+			outputPointer++;
+			i++;
+		}		
+		
 		break;
 
 	case SPI_MODE:
